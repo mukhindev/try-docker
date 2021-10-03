@@ -4,7 +4,7 @@
 
 Файл `Dockerfile` описывает конфигурацию контейнера
 
-Пример: 
+Пример 1: 
 
 ```dockerfile
 # На базе Ubuntu
@@ -30,6 +30,24 @@ EXPOSE 3000
 
 # Вывод версии node и запуск node приложения
 CMD node -v && node index.js
+```
+
+Пример 2:
+
+Образ без node_modules зависимостей. Нужно билдить фронт и бэк
+
+```dockerfile
+# Собираем билды фронта и бэка
+FROM node:14-alpine AS build
+WORKDIR /app
+COPY . .
+RUN npm install -f && npm run build
+
+# Запускаем собраный сервер с раздачей собранной статики
+FROM node:14-alpine
+COPY --from=build /app/dist /dist
+CMD node ./dist/server/index.js
+
 ```
 
 ## Сборка, запуск, остановка
@@ -111,4 +129,97 @@ docker run -p 4000:3000 -d name
 
 ```bash
 docker run -v ~/dev/try-docker/shared:/var/www/shared -d name 
+```
+
+## docker-compose
+
+Файл `docker-compose.yaml`
+
+Пример: 
+
+```yaml
+version: "3"
+
+services:
+  # Название сервиса
+  mongo:
+    # Образ с hub.docker.com
+    image: mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: user
+      MONGO_INITDB_ROOT_PASSWORD: password
+    # Проброс файлов родитель:контейнер. MongoDB будет создавать свои файлы
+    volumes:
+      - ./mongo:/data/db
+    # Проброс порта родитель:контейнер
+    ports:
+      - "27017:27017"
+    # Использование сети
+    networks:
+      # Название сети
+      - app
+
+  # Название сервиса
+  server-app:
+    # Сборка про Dockerfile находящемуся в корне
+    build:
+      context: .
+    # Переменные окружения
+    environment:
+      # Хост mongo с портом 27017 будет создан в сервисе mongo
+      - MONGO_HOST=mongo
+    # Секретные переменные окружения
+    env_file:
+      ./.env
+    # Проброс порта родитель:контейнер
+    ports:
+      - "4000:3000"
+    # Проброс файлов родитель:контейнер
+    volumes:
+      - ./shared:/var/www/shared
+    # Зависимость от mongo
+    depends_on:
+      - mongo
+    # Использование сети
+    networks:
+      # Название сети
+      - app
+    # Дожидаться запуска MongoDB
+    command: ./wait-for.sh mongo:27017 -- npm start
+
+# Связать созданные сервисы по сети
+networks:
+  # Название сети
+  app:
+    driver: bridge
+```
+
+### Сборка `build`
+
+```bash
+docker-compose build server-app
+```
+
+### Запуск `up`
+
+```bash
+docker-compose up название-сервиса
+```
+
+```bash
+docker-compose up -d название-сервиса
+```
+
+Список запущенных контейнеров в контексте `.docker-compose.yaml`
+
+```bash
+docker ps
+```
+
+### Остановка `stop`
+
+Остановка запущенных контейнеров в контексте `.docker-compose.yaml`
+
+```bash
+docker-compose stop
 ```
